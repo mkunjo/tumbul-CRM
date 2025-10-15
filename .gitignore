@@ -1,0 +1,15 @@
+# .gitignore
+node_modules/
+.env
+uploads/*
+!uploads/.gitkeep
+*.log
+.DS_Store
+dist/
+build/
+coverage/
+.vscode/
+.idea/
+*.swp
+*.swo
+package-lock.json

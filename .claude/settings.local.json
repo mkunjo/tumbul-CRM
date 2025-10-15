@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat backend/package.json)",
+      "Bash(find \"C:\\Users\\Admin\\Documents\\DevProjects\\tumbul-CRM\" -type f -name \"*.js\" ! -path \"*/node_modules/*\" -exec echo \"=== {} ===\" ; -exec head -20 {} ;)",
+      "Bash(dir \"C:\\Users\\Admin\\Documents\\DevProjects\\tumbul-CRM\")",
+      "Bash(findstr \"^\\w\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

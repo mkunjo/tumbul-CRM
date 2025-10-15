@@ -1,0 +1,71 @@
+{
+  "name": "tumbul-crm",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "migrate:up": "node scripts/migrate.js up",
+    "migrate:down": "node scripts/migrate.js down",
+    "migrate:status": "node scripts/migrate.js status",
+    "migrate:reset": "node scripts/migrate.js reset",
+    "test": "jest --coverage",
+    "test:watch": "jest --watch"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mkunjo/tumbul-CRM.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mkunjo/tumbul-CRM/issues"
+  },
+  "homepage": "https://github.com/mkunjo/tumbul-CRM#readme",
+  "dependencies": {
+    "@sentry/node": "^10.20.0",
+    "aws-sdk": "^2.1692.0",
+    "bcrypt": "^6.0.0",
+    "bull": "^4.16.5",
+    "compression": "^1.8.1",
+    "connect-redis": "^9.0.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "express-session": "^1.18.2",
+    "express-validator": "^7.2.1",
+    "helmet": "^8.1.0",
+    "joi": "^18.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.1",
+    "multer": "^2.0.2",
+    "passport": "^0.7.0",
+    "passport-apple": "^2.0.2",
+    "passport-google-oauth20": "^2.0.0",
+    "passport-jwt": "^4.0.1",
+    "pg": "^8.16.3",
+    "qrcode": "^1.5.4",
+    "redis": "^5.8.3",
+    "sharp": "^0.34.4",
+    "speakeasy": "^2.0.0",
+    "stripe": "^19.1.0",
+    "twilio": "^5.10.3",
+    "uuid": "^13.0.0",
+    "winston": "^3.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.2",
+    "eslint": "^9.37.0",
+    "jest": "^30.2.0",
+    "nodemon": "^3.1.10",
+    "prettier": "^3.6.2",
+    "supertest": "^7.1.4"
+  }
+}

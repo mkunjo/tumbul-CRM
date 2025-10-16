@@ -3,9 +3,7 @@
 const jwt = require('jsonwebtoken');
 const { query } = require('../config/database');
 
-/**
- * Verify JWT token and attach tenant to request
- */
+//Verify JWT token and attach tenant to request
 const authenticate = async (req, res, next) => {
   try {
     // Get token from header
@@ -79,9 +77,7 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-/**
- * Optional authentication - doesn't fail if no token
- */
+// Optional authentication - doesn't fail if no token
 const optionalAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   
@@ -114,9 +110,7 @@ const optionalAuth = async (req, res, next) => {
   next();
 };
 
-/**
- * Check if tenant has required subscription plan
- */
+//Check if tenant has required subscription plan
 const requirePlan = (...allowedPlans) => {
   return (req, res, next) => {
     if (!req.tenant) {
@@ -138,9 +132,7 @@ const requirePlan = (...allowedPlans) => {
   };
 };
 
-/**
- * Check usage limits based on subscription plan
- */
+// Check usage limits based on subscription plan
 const checkUsageLimit = (resourceType) => {
   return async (req, res, next) => {
     if (!req.tenant) {
@@ -229,12 +221,10 @@ const checkUsageLimit = (resourceType) => {
   };
 };
 
-/**
- * Rate limiting based on plan
- */
+//Rate limiting based on plan
 const planBasedRateLimit = (req, res, next) => {
-  // This is a placeholder - implement with express-rate-limit
-  // Different limits per plan will be configured in the main app
+  // Placeholder to implement with express-rate-limit;
+  // Different limits per plan will be configured in the main app;
   next();
 };
 

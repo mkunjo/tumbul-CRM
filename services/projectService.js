@@ -3,9 +3,7 @@
 const { queryWithTenant, transactionWithTenant } = require('../config/database');
 
 class ProjectService {
-  /**
-   * Get all projects for a tenant
-   */
+  // Get all projects for a specific tenant; w/ filtering & pagination
   async getProjects(tenantId, { status, clientId, search, limit = 50, offset = 0 }) {
     let whereClause = 'WHERE p.tenant_id = $1';
     const params = [tenantId];
@@ -73,9 +71,7 @@ class ProjectService {
     };
   }
 
-  /**
-   * Get single project by ID with full details
-   */
+   // Get single project by ID with full details
   async getProjectById(tenantId, projectId) {
     const query = `
       SELECT 
@@ -109,9 +105,7 @@ class ProjectService {
     return result.rows[0];
   }
 
-  /**
-   * Create new project
-   */
+  // Create new project
   async createProject(tenantId, projectData) {
     const { clientId, title, description, status, startDate, estimatedCompletion, totalAmount } = projectData;
 
@@ -150,9 +144,7 @@ class ProjectService {
     return result.rows[0];
   }
 
-  /**
-   * Update project
-   */
+  // Update project allowed fields; Project not found error
   async updateProject(tenantId, projectId, updates) {
     const allowedFields = ['title', 'description', 'status', 'start_date', 'estimated_completion', 'actual_completion', 'total_amount'];
     const updateFields = [];
@@ -192,9 +184,7 @@ class ProjectService {
     return result.rows[0];
   }
 
-  /**
-   * Delete project
-   */
+   // Delete project
   async deleteProject(tenantId, projectId) {
     // This will cascade delete related photos, invoices, expenses, time entries
     const query = 'DELETE FROM projects WHERE tenant_id = $1 AND id = $2 RETURNING id';
@@ -207,9 +197,7 @@ class ProjectService {
     return { success: true, id: result.rows[0].id };
   }
 
-  /**
-   * Get project timeline/activity
-   */
+  // Get project timeline/activity
   async getProjectTimeline(tenantId, projectId, { limit = 50 }) {
     const query = `
       SELECT 
@@ -266,9 +254,7 @@ class ProjectService {
     return result.rows;
   }
 
-  /**
-   * Get project statistics
-   */
+  // Get project statistics
   async getProjectStats(tenantId) {
     const query = `
       SELECT 
@@ -286,9 +272,7 @@ class ProjectService {
     return result.rows[0];
   }
 
-  /**
-   * Get projects by status summary
-   */
+  // Get projects by status summary
   async getStatusSummary(tenantId) {
     const query = `
       SELECT 

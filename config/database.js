@@ -1,4 +1,3 @@
-// config/database.js
 // PostgreSQL connection configuration with multi-tenant support
 
 const { Pool } = require('pg');
@@ -42,10 +41,8 @@ pool.query('SELECT NOW()', (err, res) => {
   }
 });
 
-/**
- * Execute query with automatic tenant isolation
- * Sets the session variable for row-level security
- */
+// Execute query with automatic tenant isolation
+// Sets the session variable for row-level security
 async function queryWithTenant(tenantId, text, params) {
   const client = await pool.connect();
   try {
@@ -60,9 +57,7 @@ async function queryWithTenant(tenantId, text, params) {
   }
 }
 
-/**
- * Execute query within a transaction
- */
+// Execute query within a transaction
 async function transaction(callback) {
   const client = await pool.connect();
   try {
@@ -78,9 +73,7 @@ async function transaction(callback) {
   }
 }
 
-/**
- * Execute query within a transaction with tenant isolation
- */
+// Execute query within a transaction with tenant isolation
 async function transactionWithTenant(tenantId, callback) {
   const client = await pool.connect();
   try {
@@ -97,9 +90,7 @@ async function transactionWithTenant(tenantId, callback) {
   }
 }
 
-/**
- * Health check for database
- */
+// Health check for database
 async function healthCheck() {
   try {
     const result = await pool.query('SELECT 1 as status');
@@ -110,9 +101,7 @@ async function healthCheck() {
   }
 }
 
-/**
- * Get pool statistics
- */
+// Get pool statistics
 function getPoolStats() {
   return {
     total: pool.totalCount,

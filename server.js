@@ -9,7 +9,8 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 const passport = require('./config/passport');
-const { healthCheck } = require('./config/database');
+const { healthCheck, shutdown } = require('./config/database');
+
 
 // Initialize express app
 const app = express();
@@ -187,30 +188,37 @@ app.use((err, req, res, next) => {
 // =============================================
 // Graceful Shutdown
 // =============================================
-
-const gracefulShutdown = () => {
-  console.log('\nStarting graceful shutdown...');
+const gracefulShutdown = async (signal) => {
+  console.log(`\n${signal} received: Starting graceful shutdown...`);
   
-  server.close(() => {
-    console.log('HTTP server closed');
+  // Stop accepting new connections
+  server.close(async () => {
+    console.log('✓ HTTP server closed - no longer accepting connections');
     
-    // Close database connections
-    const { pool } = require('./config/database');
-    pool.end(() => {
-      console.log('Database pool closed');
-      process.exit(0);
-    });
+    try {
+      // Close database connections using the new shutdown method
+      const dbClosed = await shutdown();
+      
+      if (dbClosed) {
+        console.log('✓ Database connections closed successfully');
+        console.log('✓ Graceful shutdown complete');
+        process.exit(0);
+      } else {
+        console.error('✗ Database shutdown encountered errors');
+        process.exit(1);
+      }
+    } catch (error) {
+      console.error('✗ Error during shutdown:', error);
+      process.exit(1);
+    }
   });
 
-  // Force shutdown after 10 seconds
+  // Force shutdown after 10 seconds if graceful shutdown hangs
   setTimeout(() => {
-    console.error('Forcing shutdown after timeout');
+    console.error('⚠ Could not close connections in time, forcefully shutting down');
     process.exit(1);
   }, 10000);
 };
-
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
 
 // =============================================
 // Start Server
@@ -225,10 +233,18 @@ const server = app.listen(PORT, () => {
   console.log('='.repeat(50));
 });
 
+// Listen for termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled Promise Rejection:', err);
   gracefulShutdown();
 });
+
+// Listen for termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 module.exports = app;

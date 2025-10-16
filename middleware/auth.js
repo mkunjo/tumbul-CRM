@@ -1,67 +1,104 @@
-// JWT authentication and authorization middleware
-
+// JWT authentication and authorization middleware (refactored)
 const jwt = require('jsonwebtoken');
 const { query } = require('../config/database');
+
+// Centralized plan limits (can move to /config/limits.js)
+const PLAN_LIMITS = {
+  free: {
+    projects: parseInt(process.env.FREE_PROJECT_LIMIT || 3, 10),
+    clients: parseInt(process.env.FREE_CLIENT_LIMIT || 5, 10),
+    photos: parseInt(process.env.FREE_PHOTOS_LIMIT || 50, 10)
+  },
+  basic: {
+    projects: parseInt(process.env.BASIC_PROJECT_LIMIT || 25, 10),
+    clients: parseInt(process.env.BASIC_CLIENT_LIMIT || 50, 10),
+    photos: parseInt(process.env.BASIC_PHOTOS_LIMIT || 500, 10)
+  },
+  pro: {
+    projects: -1,
+    clients: -1,
+    photos: -1
+  }
+};
+
+// ------------------------------------
+// Shared helper functions
+// ------------------------------------
+
+/** Unified JSON error response */
+const respondError = (res, status, error, message, extras = {}) =>
+  res.status(status).json({ error, message, ...extras });
+
+/** Fetch tenant record by ID */
+const getTenantById = async (tenantId) => {
+  const { rows } = await query(
+    `SELECT id, email, company_name, subscription_plan, is_active
+     FROM tenants WHERE id = $1`,
+    [tenantId]
+  );
+  return rows[0];
+};
+
+/** Get current resource usage for tenant */
+const getUsageCount = async (tenantId, type) => {
+  const queries = {
+    projects: 'SELECT COUNT(*) FROM projects WHERE tenant_id = $1',
+    clients: 'SELECT COUNT(*) FROM clients WHERE tenant_id = $1',
+    photos: `
+      SELECT COUNT(*) FROM photos ph
+      JOIN projects p ON ph.project_id = p.id
+      WHERE p.tenant_id = $1 
+        AND DATE_TRUNC('month', ph.uploaded_at) = DATE_TRUNC('month', NOW())`
+  };
+
+  const { rows } = await query(queries[type], [tenantId]);
+  return parseInt(rows[0].count, 10);
+};
+
+// ------------------------------------
+// Middleware functions
+// ------------------------------------
 
 /**
  * Verify JWT token and attach tenant to request
  */
 const authenticate = async (req, res, next) => {
   try {
-    // Get token from header
     const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ 
-        error: 'Authentication required',
-        message: 'No token provided' 
-      });
+
+    if (!authHeader?.startsWith('Bearer ')) {
+      return respondError(res, 401, 'Authentication required', 'No token provided');
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-
-    // Verify token
+    const token = authHeader.substring(7);
     let decoded;
+
     try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      decoded = jwt.verify(token, process.env.JWT_SECRET, {
+        audience: process.env.JWT_AUDIENCE || 'your-api',
+        issuer: process.env.JWT_ISSUER || 'auth-service'
+      });
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
-        return res.status(401).json({ 
-          error: 'Token expired',
-          message: 'Please refresh your token' 
-        });
+        return respondError(res, 401, 'Token expired', 'Please refresh your token');
       }
-      return res.status(401).json({ 
-        error: 'Invalid token',
-        message: 'Token verification failed' 
-      });
+      return respondError(res, 401, 'Invalid token', 'Token verification failed');
     }
 
-    // Get tenant from database
-    const result = await query(
-      `SELECT id, email, company_name, subscription_plan, is_active
-       FROM tenants WHERE id = $1`,
-      [decoded.id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(401).json({ 
-        error: 'User not found',
-        message: 'Invalid token' 
-      });
+    if (!decoded?.id) {
+      return respondError(res, 401, 'Invalid token payload', 'Missing tenant ID');
     }
 
-    const tenant = result.rows[0];
+    const tenant = await getTenantById(decoded.id);
 
-    // Check if account is active
+    if (!tenant) {
+      return respondError(res, 401, 'User not found', 'Invalid token');
+    }
+
     if (!tenant.is_active) {
-      return res.status(403).json({ 
-        error: 'Account disabled',
-        message: 'Your account has been disabled' 
-      });
+      return respondError(res, 403, 'Account disabled', 'Your account has been disabled');
     }
 
-    // Attach tenant to request
     req.tenant = {
       id: tenant.id,
       email: tenant.email,
@@ -72,10 +109,7 @@ const authenticate = async (req, res, next) => {
     next();
   } catch (error) {
     console.error('Authentication error:', error);
-    return res.status(500).json({ 
-      error: 'Authentication failed',
-      message: 'Internal server error' 
-    });
+    return respondError(res, 500, 'Authentication failed', 'Internal server error');
   }
 };
 
@@ -84,51 +118,45 @@ const authenticate = async (req, res, next) => {
  */
 const optionalAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return next();
-  }
+
+  if (!authHeader?.startsWith('Bearer ')) return next();
 
   try {
     const token = authHeader.substring(7);
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const result = await query(
-      'SELECT id, email, company_name, subscription_plan FROM tenants WHERE id = $1',
-      [decoded.id]
-    );
+    if (!decoded?.id) return next();
 
-    if (result.rows.length > 0) {
-      req.tenant = {
-        id: result.rows[0].id,
-        email: result.rows[0].email,
-        companyName: result.rows[0].company_name,
-        plan: result.rows[0].subscription_plan
-      };
-    }
+    const tenant = await getTenantById(decoded.id);
+    if (!tenant?.is_active) return next();
+
+    req.tenant = {
+      id: tenant.id,
+      email: tenant.email,
+      companyName: tenant.company_name,
+      plan: tenant.subscription_plan
+    };
   } catch (error) {
-    // Silently fail for optional auth
-    console.log('Optional auth failed:', error.message);
+    // Fail silently, only log in non-production
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('Optional auth failed:', error.message);
+    }
   }
 
   next();
 };
 
 /**
- * Check if tenant has required subscription plan
+ * Require specific subscription plan(s)
  */
 const requirePlan = (...allowedPlans) => {
   return (req, res, next) => {
     if (!req.tenant) {
-      return res.status(401).json({ 
-        error: 'Authentication required' 
-      });
+      return respondError(res, 401, 'Authentication required');
     }
 
     if (!allowedPlans.includes(req.tenant.plan)) {
-      return res.status(403).json({ 
-        error: 'Insufficient plan',
-        message: `This feature requires ${allowedPlans.join(' or ')} plan`,
+      return respondError(res, 403, 'Insufficient plan', `This feature requires ${allowedPlans.join(' or ')} plan`, {
         requiredPlans: allowedPlans,
         currentPlan: req.tenant.plan
       });
@@ -144,77 +172,31 @@ const requirePlan = (...allowedPlans) => {
 const checkUsageLimit = (resourceType) => {
   return async (req, res, next) => {
     if (!req.tenant) {
-      return res.status(401).json({ error: 'Authentication required' });
+      return respondError(res, 401, 'Authentication required');
     }
 
-    const plan = req.tenant.plan;
-    const tenantId = req.tenant.id;
+    const { id: tenantId, plan } = req.tenant;
+    const limit = PLAN_LIMITS[plan]?.[resourceType];
 
-    // Get plan limits from environment
-    const limits = {
-      free: {
-        projects: parseInt(process.env.FREE_PROJECT_LIMIT || 3),
-        clients: parseInt(process.env.FREE_CLIENT_LIMIT || 5),
-        photos: parseInt(process.env.FREE_PHOTOS_LIMIT || 50)
-      },
-      basic: {
-        projects: parseInt(process.env.BASIC_PROJECT_LIMIT || 25),
-        clients: parseInt(process.env.BASIC_CLIENT_LIMIT || 50),
-        photos: parseInt(process.env.BASIC_PHOTOS_LIMIT || 500)
-      },
-      pro: {
-        projects: -1, // Unlimited
-        clients: -1,
-        photos: -1
-      }
-    };
-
-    const limit = limits[plan]?.[resourceType];
-
-    // If unlimited (-1), allow
-    if (limit === -1) {
-      return next();
+    if (limit === undefined) {
+      return respondError(res, 400, 'Invalid resource type', `Unknown resource: ${resourceType}`);
     }
 
-    // Check current usage
-    let currentCount = 0;
+    // Unlimited (-1)
+    if (limit === -1) return next();
 
     try {
-      if (resourceType === 'projects') {
-        const result = await query(
-          'SELECT COUNT(*) FROM projects WHERE tenant_id = $1',
-          [tenantId]
-        );
-        currentCount = parseInt(result.rows[0].count);
-      } else if (resourceType === 'clients') {
-        const result = await query(
-          'SELECT COUNT(*) FROM clients WHERE tenant_id = $1',
-          [tenantId]
-        );
-        currentCount = parseInt(result.rows[0].count);
-      } else if (resourceType === 'photos') {
-        const result = await query(
-          `SELECT COUNT(*) FROM photos ph
-           JOIN projects p ON ph.project_id = p.id
-           WHERE p.tenant_id = $1 
-           AND EXTRACT(MONTH FROM ph.uploaded_at) = EXTRACT(MONTH FROM NOW())
-           AND EXTRACT(YEAR FROM ph.uploaded_at) = EXTRACT(YEAR FROM NOW())`,
-          [tenantId]
-        );
-        currentCount = parseInt(result.rows[0].count);
-      }
+      const currentCount = await getUsageCount(tenantId, resourceType);
 
       if (currentCount >= limit) {
-        return res.status(403).json({
-          error: 'Usage limit reached',
-          message: `You have reached your ${resourceType} limit for the ${plan} plan`,
-          limit: limit,
-          current: currentCount,
-          upgradeRequired: true
-        });
+        return respondError(res, 403, 'Usage limit reached',
+          `You have reached your ${resourceType} limit for the ${plan} plan`, {
+            limit,
+            current: currentCount,
+            upgradeRequired: true
+          });
       }
 
-      // Attach usage info to request
       req.usageInfo = {
         limit,
         current: currentCount,
@@ -224,20 +206,22 @@ const checkUsageLimit = (resourceType) => {
       next();
     } catch (error) {
       console.error('Usage check error:', error);
-      return res.status(500).json({ error: 'Failed to check usage limits' });
+      return respondError(res, 500, 'Failed to check usage limits', error.message);
     }
   };
 };
 
 /**
- * Rate limiting based on plan
+ * Rate limiting placeholder (plan-based)
  */
 const planBasedRateLimit = (req, res, next) => {
-  // This is a placeholder - implement with express-rate-limit
-  // Different limits per plan will be configured in the main app
+  // Implement with express-rate-limit later
   next();
 };
 
+// ------------------------------------
+// Exports
+// ------------------------------------
 module.exports = {
   authenticate,
   optionalAuth,

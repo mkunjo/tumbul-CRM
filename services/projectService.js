@@ -153,7 +153,7 @@ class ProjectService {
 
     for (const [key, value] of Object.entries(updates)) {
       if (allowedFields.includes(key)) {
-        updateFields.push(`${key} = ${paramIndex}`);
+        updateFields.push(`${key} = $${paramIndex}`);
         values.push(value);
         paramIndex++;
       }

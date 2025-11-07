@@ -7,22 +7,22 @@ class ClientService {
    * Get all clients for a tenant
    */
   async getClients(tenantId, { includeArchived = false, search = '', limit = 50, offset = 0 }) {
-    let whereClause = 'WHERE tenant_id = $1';
+    let whereClause = 'WHERE c.tenant_id = $1';
     const params = [tenantId];
     let paramIndex = 2;
 
     if (!includeArchived) {
-      whereClause += ' AND is_archived = false';
+      whereClause += ' AND c.is_archived = false';
     }
 
     if (search) {
-      whereClause += ` AND (name ILIKE $${paramIndex} OR email ILIKE $${paramIndex} OR phone ILIKE $${paramIndex})`;
+      whereClause += ` AND (c.name ILIKE $${paramIndex} OR c.email ILIKE $${paramIndex} OR c.phone ILIKE $${paramIndex})`;
       params.push(`%${search}%`);
       paramIndex++;
     }
 
     const query = `
-      SELECT 
+      SELECT
         c.id,
         c.name,
         c.phone,
@@ -36,7 +36,7 @@ class ClientService {
         COUNT(DISTINCT p.id) FILTER (WHERE p.status = 'active') as active_projects,
         SUM(p.total_amount) as total_contract_value
       FROM clients c
-      LEFT JOIN projects p ON c.id = p.client_id
+      LEFT JOIN projects p ON c.id = p.client_id AND p.tenant_id = c.tenant_id
       ${whereClause}
       GROUP BY c.id
       ORDER BY c.created_at DESC
@@ -48,7 +48,7 @@ class ClientService {
     const result = await queryWithTenant(tenantId, query, params);
 
     // Get total count
-    const countQuery = `SELECT COUNT(*) FROM clients ${whereClause}`;
+    const countQuery = `SELECT COUNT(*) FROM clients c ${whereClause}`;
     const countResult = await queryWithTenant(tenantId, countQuery, params.slice(0, -2));
 
     return {

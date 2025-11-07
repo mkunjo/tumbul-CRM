@@ -6,38 +6,40 @@ const AppleStrategy = require('passport-apple');
 const authService = require('../services/authService');
 
 /**
- * Configure Google OAuth Strategy
+ * Configure Google OAuth Strategy (only if credentials provided)
  */
-passport.use(
-  new GoogleStrategy(
-    {
-      clientID: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: process.env.GOOGLE_CALLBACK_URL,
-      scope: ['profile', 'email']
-    },
-    async (accessToken, refreshToken, profile, done) => {
-      try {
-        const result = await authService.findOrCreateOAuthUser('google', {
-          id: profile.id,
-          displayName: profile.displayName,
-          emails: profile.emails,
-          accessToken,
-          refreshToken
-        });
-        
-        return done(null, result);
-      } catch (error) {
-        return done(error, null);
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_ID !== 'placeholder') {
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL: process.env.GOOGLE_CALLBACK_URL,
+        scope: ['profile', 'email']
+      },
+      async (accessToken, refreshToken, profile, done) => {
+        try {
+          const result = await authService.findOrCreateOAuthUser('google', {
+            id: profile.id,
+            displayName: profile.displayName,
+            emails: profile.emails,
+            accessToken,
+            refreshToken
+          });
+
+          return done(null, result);
+        } catch (error) {
+          return done(error, null);
+        }
       }
-    }
-  )
-);
+    )
+  );
+}
 
 /**
- * Configure Apple OAuth Strategy
+ * Configure Apple OAuth Strategy (only if credentials provided)
  */
-if (process.env.APPLE_CLIENT_ID) {
+if (process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_ID !== 'placeholder') {
   passport.use(
     new AppleStrategy(
       {

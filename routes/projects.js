@@ -9,9 +9,10 @@ const { authenticate, checkUsageLimit } = require('../middleware/auth');
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ 
+    console.error('Validation errors:', errors.array());
+    return res.status(400).json({
       error: 'Validation failed',
-      errors: errors.array() 
+      errors: errors.array()
     });
   }
   next();
@@ -165,8 +166,9 @@ router.post('/',
   validate,
   async (req, res) => {
     try {
+      console.log('Creating project with data:', req.body);
       const project = await projectService.createProject(req.tenant.id, req.body);
-      
+
       res.status(201).json({
         project,
         usageInfo: req.usageInfo
@@ -174,9 +176,9 @@ router.post('/',
     } catch (error) {
       console.error('Create project error:', error);
       const statusCode = error.message === 'Client not found' ? 404 : 500;
-      res.status(statusCode).json({ 
+      res.status(statusCode).json({
         error: 'Failed to create project',
-        message: error.message 
+        message: error.message
       });
     }
   }

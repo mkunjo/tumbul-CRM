@@ -117,7 +117,11 @@ class AuthService {
     const accessToken = jwt.sign(
       payload,
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
+      {
+        expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+        audience: process.env.JWT_AUDIENCE || 'your-api',
+        issuer: process.env.JWT_ISSUER || 'auth-service'
+      }
     );
 
     const refreshToken = jwt.sign(

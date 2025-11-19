@@ -68,7 +68,7 @@ SELECT
   COUNT(p.id) as payment_count,
   MAX(p.payment_date) as last_payment_date
 FROM invoices i
-LEFT JOIN payments p ON i.invoice_id = p.invoice_id
+LEFT JOIN payments p ON i.id = p.invoice_id
 GROUP BY i.id, i.invoice_number, i.amount, i.status;
 
 -- =============================================
@@ -107,6 +107,13 @@ BEGIN
         updated_at = NOW()
     WHERE id = COALESCE(NEW.invoice_id, OLD.invoice_id)
       AND status NOT IN ('partially_paid', 'canceled');
+  ELSIF v_total_paid = 0 AND v_invoice_status IN ('paid', 'partially_paid') THEN
+    -- No payments remaining - revert to sent
+    UPDATE invoices
+    SET status = 'sent',
+        paid_at = NULL,
+        updated_at = NOW()
+    WHERE id = COALESCE(NEW.invoice_id, OLD.invoice_id);
   END IF;
 
   RETURN COALESCE(NEW, OLD);

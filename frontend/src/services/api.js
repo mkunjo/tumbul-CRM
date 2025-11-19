@@ -85,10 +85,12 @@ export const expensesAPI = {
   create: (data) => api.post('/api/expenses', data),
   update: (id, data) => api.put(`/api/expenses/${id}`, data),
   delete: (id) => api.delete(`/api/expenses/${id}`),
-  uploadReceipt: (id, formData) => api.post(`/api/expenses/${id}/receipt`, formData, {
+  // Fixed: Use update endpoint for receipt upload (backend doesn't have separate endpoint)
+  uploadReceipt: (id, formData) => api.put(`/api/expenses/${id}`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }),
-  updateApprovalStatus: (id, status) => api.patch(`/api/expenses/${id}/approval`, { approval_status: status }),
+  // Fixed: Correct endpoint path is /approve, not /approval
+  approve: (id) => api.patch(`/api/expenses/${id}/approve`),
 };
 
 // Time Entries API
@@ -98,9 +100,12 @@ export const timeEntriesAPI = {
   create: (data) => api.post('/api/time-entries', data),
   update: (id, data) => api.put(`/api/time-entries/${id}`, data),
   delete: (id) => api.delete(`/api/time-entries/${id}`),
-  start: (data) => api.post('/api/time-entries/timer/start', data),
-  stop: (id) => api.post(`/api/time-entries/timer/${id}/stop`),
-  getRunning: () => api.get('/api/time-entries/timer/running'),
+  // Fixed: Removed /timer/ prefix from paths to match backend routes
+  start: (data) => api.post('/api/time-entries/start', data),
+  // Fixed: Changed POST to PATCH (REST convention for partial update)
+  stop: (id) => api.patch(`/api/time-entries/${id}/stop`),
+  // Fixed: Removed /timer/ prefix
+  getRunning: () => api.get('/api/time-entries/running'),
 };
 
 // Dashboard API

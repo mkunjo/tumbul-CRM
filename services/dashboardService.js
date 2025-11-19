@@ -106,10 +106,12 @@ class DashboardService {
         COUNT(*) FILTER (WHERE i.status = 'draft') as draft_count,
         COUNT(*) FILTER (WHERE i.status = 'sent') as sent_count,
         COUNT(*) FILTER (WHERE i.status = 'paid') as paid_count,
+        COUNT(*) FILTER (WHERE i.status = 'partially_paid') as partially_paid_count,
         COUNT(*) FILTER (WHERE i.status = 'overdue') as overdue_count,
+        COUNT(*) FILTER (WHERE i.status = 'canceled') as canceled_count,
         COALESCE(SUM(i.amount), 0) as total_amount,
         COALESCE(SUM(i.amount) FILTER (WHERE i.status = 'paid'), 0) as paid_amount,
-        COALESCE(SUM(i.amount) FILTER (WHERE i.status IN ('sent', 'overdue')), 0) as outstanding_amount,
+        COALESCE(SUM(i.amount) FILTER (WHERE i.status IN ('sent', 'overdue', 'partially_paid')), 0) as outstanding_amount,
         COALESCE(AVG(i.amount), 0) as avg_invoice_amount
       FROM invoices i
       JOIN projects p ON i.project_id = p.id
@@ -375,7 +377,7 @@ class DashboardService {
       JOIN projects p ON i.project_id = p.id
       JOIN clients c ON p.client_id = c.id
       WHERE p.tenant_id = $1
-        AND i.status IN ('sent', 'overdue')
+        AND i.status IN ('sent', 'overdue', 'partially_paid')
         AND i.due_date IS NOT NULL
         AND i.due_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '${days} days'
 

@@ -206,6 +206,126 @@ router.put('/:id',
 );
 
 /**
+ * PATCH /api/invoices/:id/status
+ * Update invoice status (for UI dropdown)
+ * NOTE: For 'paid' status, prefer using POST /api/invoices/:id/payment to record actual payment
+ */
+router.patch('/:id/status',
+  authenticate,
+  [
+    param('id').isUUID(),
+    body('status').isIn(['draft', 'sent', 'paid', 'partially_paid', 'overdue', 'canceled'])
+  ],
+  validate,
+  async (req, res) => {
+    try {
+      console.log('📝 PATCH /:id/status called - ID:', req.params.id, 'Status:', req.body.status);
+      const { status } = req.body;
+
+      // Get current invoice to validate transition
+      const currentInvoice = await invoiceService.getInvoiceById(req.tenant.id, req.params.id);
+
+      // Handle specific status transitions with proper business logic
+      if (status === 'sent') {
+        // Only draft invoices can be marked as sent
+        if (currentInvoice.status !== 'draft') {
+          return res.status(400).json({
+            error: 'Invalid status transition',
+            message: `Cannot change status from "${currentInvoice.status}" to "sent". Only draft invoices can be marked as sent.`
+          });
+        }
+        const invoice = await invoiceService.markAsSent(req.tenant.id, req.params.id);
+        return res.json({ message: 'Invoice marked as sent', invoice });
+      }
+
+      if (status === 'paid') {
+        // Paid status should be set via payment records, but allow manual override
+        // This creates a payment record for the remaining balance
+        const remainingBalance = parseFloat(currentInvoice.balance || currentInvoice.amount);
+
+        if (remainingBalance <= 0) {
+          return res.status(400).json({
+            error: 'Already paid',
+            message: 'Invoice is already fully paid'
+          });
+        }
+
+        // Create payment record for remaining balance
+        const result = await invoiceService.recordPayment(
+          req.tenant.id,
+          req.params.id,
+          {
+            amount: remainingBalance,
+            payment_date: new Date(),
+            payment_method: 'other',
+            notes: 'Marked as paid manually via status dropdown'
+          }
+        );
+        return res.json({
+          message: 'Payment recorded and invoice marked as paid',
+          invoice: result.invoice
+        });
+      }
+
+      if (status === 'canceled') {
+        // Use cancelInvoice method which has proper validation
+        const invoice = await invoiceService.cancelInvoice(req.tenant.id, req.params.id);
+        return res.json({ message: 'Invoice canceled', invoice });
+      }
+
+      if (status === 'partially_paid') {
+        return res.status(400).json({
+          error: 'Invalid status change',
+          message: 'Cannot manually set status to "partially_paid". This status is set automatically when a partial payment is recorded. Use POST /api/invoices/:id/payment to record a payment.'
+        });
+      }
+
+      // For draft and overdue, allow direct status change with validation
+      const validTransitions = {
+        'sent': ['draft', 'overdue'],
+        'overdue': ['sent', 'partially_paid'],
+        'paid': [], // Cannot change from paid
+        'canceled': [], // Cannot change from canceled
+        'draft': ['sent'], // Already handled above
+        'partially_paid': ['overdue']
+      };
+
+      const currentStatus = currentInvoice.status;
+      const allowedTargets = validTransitions[currentStatus] || [];
+
+      if (!allowedTargets.includes(status)) {
+        return res.status(400).json({
+          error: 'Invalid status transition',
+          message: `Cannot change status from "${currentStatus}" to "${status}". ${
+            currentStatus === 'paid' ? 'Paid invoices cannot be modified.' :
+            currentStatus === 'canceled' ? 'Canceled invoices cannot be modified.' :
+            `Valid transitions from "${currentStatus}": ${allowedTargets.join(', ') || 'none'}`
+          }`
+        });
+      }
+
+      // Allow the status change
+      const invoice = await invoiceService.updateInvoice(
+        req.tenant.id,
+        req.params.id,
+        { status }
+      );
+      res.json({ message: 'Status updated', invoice });
+    } catch (error) {
+      console.error('Update status error:', error);
+      const statusCode = error.message === 'Invoice not found' ? 404 :
+                         error.message.includes('not found or cannot') ? 400 :
+                         error.message.includes('Cannot record payment') ? 400 :
+                         error.message.includes('exceeds remaining balance') ? 400 : 500;
+      res.status(statusCode).json({
+        error: 'Failed to update status',
+        message: error.message
+      });
+    }
+  }
+);
+
+/**
  * PATCH /api/invoices/:id/send
  * Mark invoice as sent
  */

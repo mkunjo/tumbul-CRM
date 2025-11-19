@@ -1,8 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import toast from 'react-hot-toast';
 import { timeEntriesAPI } from '../services/api';
 import { format, differenceInSeconds } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import { useTimeEntries, useRunningTimer } from '../hooks/useTimeEntries';
 import { useProjects } from '../hooks/useProjects';
+import DataTable from '../components/DataTable';
+import ErrorBoundary from '../components/ErrorBoundary';
+import FocusLock from 'react-focus-lock';
 import './TimeEntries.css';
 
 const TimeEntries = () => {
@@ -13,14 +18,19 @@ const TimeEntries = () => {
 
   const [showModal, setShowModal] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
+  const [selectedEntries, setSelectedEntries] = useState([]);
   const [elapsedTime, setElapsedTime] = useState(0);
   const timerIntervalRef = useRef(null);
+  const timerStartRef = useRef(null); // Track when timer started in UI
   const [formData, setFormData] = useState({
     projectId: '',
     description: '',
     startTime: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
     endTime: '',
   });
+
+  // Get user's timezone
+  const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const loading = entriesLoading || projectsLoading;
 
@@ -34,9 +44,14 @@ const TimeEntries = () => {
 
   useEffect(() => {
     if (runningTimer) {
+      // Set timer start reference if not already set
+      if (!timerStartRef.current) {
+        timerStartRef.current = new Date();
+      }
       startTimerInterval();
     } else {
       stopTimerInterval();
+      timerStartRef.current = null;
     }
   }, [runningTimer]);
 
@@ -45,12 +60,13 @@ const TimeEntries = () => {
       clearInterval(timerIntervalRef.current);
     }
 
+    //Calculate elapsed time from the database `start_time`, not the UI reference:
     const updateElapsedTime = () => {
-      if (runningTimer) {
-        const start = new Date(runningTimer.start_time);
-        const now = new Date();
-        setElapsedTime(differenceInSeconds(now, start));
-      }
+      if (runningTimer?.start_time) {
+          const now = new Date();
+          const startTime = new Date(runningTimer.start_time);
+          setElapsedTime(differenceInSeconds(now, startTime));
+        }
     };
 
     updateElapsedTime();
@@ -73,8 +89,10 @@ const TimeEntries = () => {
       });
       mutateRunningTimer(response.data.timeEntry);
       mutateTimeEntries();
+      toast.success('Timer started successfully');
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to start timer');
+      const message = err.response?.data?.message || err.message || 'Failed to start timer';
+      toast.error(message);
     }
   }, [mutateRunningTimer, mutateTimeEntries]);
 
@@ -86,8 +104,10 @@ const TimeEntries = () => {
       mutateRunningTimer(null);
       stopTimerInterval();
       mutateTimeEntries();
+      toast.success('Timer stopped successfully');
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to stop timer');
+      const message = err.response?.data?.message || err.message || 'Failed to stop timer';
+      toast.error(message);
     }
   }, [runningTimer, mutateRunningTimer, mutateTimeEntries]);
 
@@ -96,14 +116,17 @@ const TimeEntries = () => {
     try {
       if (editingEntry) {
         await timeEntriesAPI.update(editingEntry.id, formData);
+        toast.success('Time entry updated successfully');
       } else {
         await timeEntriesAPI.create(formData);
+        toast.success('Time entry created successfully');
       }
       setShowModal(false);
       resetForm();
       mutateTimeEntries();
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to save time entry');
+      const message = err.response?.data?.message || err.message || 'Failed to save time entry';
+      toast.error(message);
     }
   }, [editingEntry, formData, mutateTimeEntries]);
 
@@ -117,8 +140,10 @@ const TimeEntries = () => {
       );
       await timeEntriesAPI.delete(id);
       mutateTimeEntries();
+      toast.success('Time entry deleted successfully');
     } catch (err) {
-      alert('Failed to delete time entry');
+      const message = err.response?.data?.message || err.message || 'Failed to delete time entry';
+      toast.error(message);
       mutateTimeEntries();
     }
   }, [timeEntries, mutateTimeEntries]);
@@ -165,9 +190,86 @@ const TimeEntries = () => {
     return (totalMinutes / 60).toFixed(1);
   }, [timeEntries]);
 
-  if (loading && !timeEntries && !projects) {
-    return <div className="loading"><div className="spinner"></div></div>;
-  }
+  // Bulk delete selected time entries
+  const handleBulkDelete = useCallback(async () => {
+    if (!confirm(`Are you sure you want to delete ${selectedEntries.length} time entry(ies)?`)) return;
+
+    try {
+      await Promise.all(selectedEntries.map(id => timeEntriesAPI.delete(id)));
+      setSelectedEntries([]);
+      mutateTimeEntries();
+      toast.success(`${selectedEntries.length} time entry(ies) deleted successfully`);
+    } catch (err) {
+      const message = err.response?.data?.message || err.message || 'Failed to delete some time entries';
+      toast.error(message);
+      mutateTimeEntries();
+    }
+  }, [selectedEntries, mutateTimeEntries]);
+
+  // Define table columns
+  const columns = useMemo(() => [
+    {
+      key: 'start_time',
+      label: 'Date',
+      sortable: true,
+      render: (entry) => entry.start_time ? format(new Date(entry.start_time), 'MMM d, yyyy') : '-',
+    },
+    {
+      key: 'description',
+      label: 'Description',
+      sortable: false,
+      render: (entry) => <div className="entry-description">{entry.description}</div>,
+    },
+    {
+      key: 'client_name',
+      label: 'Client',
+      sortable: true,
+      render: (entry) => entry.client_name || '-',
+    },
+    {
+      key: 'project_title',
+      label: 'Project',
+      sortable: true,
+      render: (entry) => entry.project_title || '-',
+    },
+    {
+      key: 'start_time_formatted',
+      label: 'Start Time',
+      sortable: false,
+      render: (entry) => entry.start_time ? (
+        <span title={userTimezone}>
+          {formatInTimeZone(new Date(entry.start_time), userTimezone, 'h:mm a zzz')}
+        </span>
+      ) : '-',
+    },
+    {
+      key: 'end_time',
+      label: 'End Time',
+      sortable: false,
+      render: (entry) => entry.end_time ? (
+        <span title={userTimezone}>
+          {formatInTimeZone(new Date(entry.end_time), userTimezone, 'h:mm a zzz')}
+        </span>
+      ) : '-',
+    },
+    {
+      key: 'duration_minutes',
+      label: 'Duration',
+      sortable: true,
+      render: (entry) => <span className="duration-badge">{formatDurationMinutes(entry.duration_minutes)}</span>,
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      sortable: false,
+      render: (entry) => (
+        <div className="table-actions">
+          <button className="btn btn-sm btn-outline" onClick={() => openEditModal(entry)}>Edit</button>
+          <button className="btn btn-sm btn-danger" onClick={() => handleDelete(entry.id)}>Delete</button>
+        </div>
+      ),
+    },
+  ], [userTimezone, formatInTimeZone, formatDurationMinutes, openEditModal, handleDelete]);
 
   return (
     <div className="time-entries-page">
@@ -198,7 +300,8 @@ const TimeEntries = () => {
                     <div className="timer-description">{runningTimer.description || 'No description'}</div>
                     <div className="timer-meta">
                       {runningTimer.client_name && <span>{runningTimer.client_name}</span>}
-                      {runningTimer.project_name && <span> / {runningTimer.project_name}</span>}
+                      {/* Fixed: Backend returns 'project_title', not 'project_name' */}
+                      {runningTimer.project_title && <span> / {runningTimer.project_title}</span>}
                     </div>
                   </div>
                   <button className="btn btn-danger" onClick={handleStopTimer}>
@@ -263,136 +366,109 @@ const TimeEntries = () => {
           <h3>Time Entries</h3>
         </div>
         <div className="card-body">
-          {timeEntries && timeEntries.length > 0 ? (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th>Client</th>
-                  <th>Project</th>
-                  <th>Start Time</th>
-                  <th>End Time</th>
-                  <th>Duration</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {timeEntries.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>{entry.start_time ? format(new Date(entry.start_time), 'MMM d, yyyy') : '-'}</td>
-                    <td>
-                      <div className="entry-description">{entry.description}</div>
-                    </td>
-                    <td>{entry.client_name || '-'}</td>
-                    <td>{entry.project_name || '-'}</td>
-                    <td>{entry.start_time ? format(new Date(entry.start_time), 'h:mm a') : '-'}</td>
-                    <td>{entry.end_time ? format(new Date(entry.end_time), 'h:mm a') : '-'}</td>
-                    <td>
-                      <span className="duration-badge">{formatDurationMinutes(entry.duration_minutes)}</span>
-                    </td>
-                    <td>
-                      <div className="table-actions">
-                        <button
-                          className="btn btn-sm btn-outline"
-                          onClick={() => openEditModal(entry)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="btn btn-sm btn-danger"
-                          onClick={() => handleDelete(entry.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <div className="empty-state">
-              <div className="empty-icon">⏱️</div>
-              <h3>No time entries yet</h3>
-              <p>Start tracking time for your projects</p>
-            </div>
-          )}
+          <ErrorBoundary>
+            <DataTable
+              data={timeEntries || []}
+              columns={columns}
+              loading={entriesLoading}
+              onSelectionChange={setSelectedEntries}
+              selectable={true}
+              searchPlaceholder="Search time entries by description, client, or project..."
+              searchFields={['description', 'client_name', 'project_title']}
+              actions={
+                <button
+                  className="btn btn-sm btn-danger"
+                  onClick={handleBulkDelete}
+                >
+                  Delete Selected
+                </button>
+              }
+              emptyState={
+                <div className="empty-state">
+                  <div className="empty-icon">⏱️</div>
+                  <h3>No time entries yet</h3>
+                  <p>Start tracking time for your projects</p>
+                </div>
+              }
+            />
+          </ErrorBoundary>
         </div>
       </div>
 
       {/* Manual Entry Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="modal-title">{editingEntry ? 'Edit Time Entry' : 'Add Manual Time Entry'}</h2>
-              <button className="btn btn-sm btn-outline" onClick={() => setShowModal(false)}>✕</button>
+          <FocusLock returnFocus>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="modal-title">{editingEntry ? 'Edit Time Entry' : 'Add Manual Time Entry'}</h2>
+                <button className="btn btn-sm btn-outline" onClick={() => setShowModal(false)}>✕</button>
+              </div>
+
+              <form onSubmit={handleSubmit}>
+                <div className="modal-body">
+                  <div className="form-group">
+                    <label className="form-label">Project *</label>
+                    <select
+                      className="form-select"
+                      value={formData.projectId}
+                      onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
+                      required
+                    >
+                      <option value="">Select a project</option>
+                      {projects && projects.map((project) => (
+                        <option key={project.id} value={project.id}>{project.title} ({project.client_name})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Description</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      placeholder="What did you work on?"
+                    />
+                  </div>
+
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label className="form-label">Start Time *</label>
+                      <input
+                        type="datetime-local"
+                        className="form-input"
+                        value={formData.startTime}
+                        onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">End Time *</label>
+                      <input
+                        type="datetime-local"
+                        className="form-input"
+                        value={formData.endTime}
+                        onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    {editingEntry ? 'Update' : 'Add'} Time Entry
+                  </button>
+                </div>
+              </form>
             </div>
-
-            <form onSubmit={handleSubmit}>
-              <div className="modal-body">
-                <div className="form-group">
-                  <label className="form-label">Project *</label>
-                  <select
-                    className="form-select"
-                    value={formData.projectId}
-                    onChange={(e) => setFormData({ ...formData, projectId: e.target.value })}
-                    required
-                  >
-                    <option value="">Select a project</option>
-                    {projects && projects.map((project) => (
-                      <option key={project.id} value={project.id}>{project.title} ({project.client_name})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Description</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="What did you work on?"
-                  />
-                </div>
-
-                <div className="form-row">
-                  <div className="form-group">
-                    <label className="form-label">Start Time *</label>
-                    <input
-                      type="datetime-local"
-                      className="form-input"
-                      value={formData.startTime}
-                      onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                      required
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">End Time *</label>
-                    <input
-                      type="datetime-local"
-                      className="form-input"
-                      value={formData.endTime}
-                      onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="modal-footer">
-                <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  {editingEntry ? 'Update' : 'Add'} Time Entry
-                </button>
-              </div>
-            </form>
-          </div>
+          </FocusLock>
         </div>
       )}
     </div>

@@ -1,0 +1,76 @@
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  padding: 2rem;
+}
+
+.error-boundary-content {
+  text-align: center;
+  max-width: 600px;
+  padding: 2rem;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.error-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.error-boundary-content h3 {
+  color: #dc3545;
+  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
+}
+
+.error-boundary-content p {
+  color: #6c757d;
+  margin-bottom: 1.5rem;
+}
+
+.error-details {
+  margin: 1.5rem 0;
+  text-align: left;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 0.5rem;
+}
+
+.error-details summary {
+  cursor: pointer;
+  padding: 0.5rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.error-details summary:hover {
+  background: #e9ecef;
+}
+
+.error-stack {
+  margin: 0.5rem;
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  color: #dc3545;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.error-actions .btn {
+  min-width: 120px;
+}

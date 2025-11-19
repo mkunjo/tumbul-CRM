@@ -4,7 +4,8 @@ import { timeEntriesAPI } from '../services/api';
 export const useTimeEntries = () => {
   const fetcher = async () => {
     const response = await timeEntriesAPI.getAll();
-    return response.data.time_entries || [];
+    // Backend returns { timeEntries: [...], total: N, limit, offset }
+    return response.data.timeEntries || response.data || [];
   };
 
   const { data, error, isLoading, mutate } = useSWR(
@@ -28,8 +29,13 @@ export const useRunningTimer = () => {
   const fetcher = async () => {
     try {
       const response = await timeEntriesAPI.getRunning();
-      return response.data.timer || null;
+      // Backend returns timer object directly with elapsed_minutes and duration fields
+      return response.data || null;
     } catch (error) {
+      // 404 means no running timer, which is expected
+      if (error.response?.status === 404) {
+        return null;
+      }
       return null;
     }
   };

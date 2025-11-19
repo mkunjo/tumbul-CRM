@@ -1,34 +1,63 @@
 // Invoice management business logic
 
-const { queryWithTenant, transactionWithTenant } = require('../config/database');
+const { queryWithTenant, pool } = require('../config/database');
 
 class InvoiceService {
   /**
-   * Generate unique invoice number
-   * Format: INV-YYYYMMDD-XXXX
+   * Validate if a status transition is allowed
+   * Returns { valid: boolean, message: string }
    */
-  async generateInvoiceNumber(tenantId) {
+  validateStatusTransition(currentStatus, newStatus) {
+    // Define valid status transitions
+    const validTransitions = {
+      'draft': ['sent'],
+      'sent': ['partially_paid', 'paid', 'overdue', 'canceled'],
+      'partially_paid': ['paid', 'overdue', 'canceled'],
+      'paid': [], // Paid invoices cannot be modified
+      'overdue': ['partially_paid', 'paid', 'canceled'],
+      'canceled': [] // Canceled invoices cannot be modified
+    };
+
+    // Same status is always valid
+    if (currentStatus === newStatus) {
+      return { valid: true, message: 'No change' };
+    }
+
+    // Check if transition is allowed
+    const allowed = validTransitions[currentStatus] || [];
+
+    if (!allowed.includes(newStatus)) {
+      const allowedStr = allowed.length > 0 ? allowed.join(', ') : 'none';
+      return {
+        valid: false,
+        message: `Cannot transition from "${currentStatus}" to "${newStatus}". Valid transitions: ${allowedStr}`
+      };
+    }
+
+    // Special rules for certain transitions
+    if (newStatus === 'paid' || newStatus === 'partially_paid') {
+      return {
+        valid: false,
+        message: `Status "${newStatus}" must be set via payment records. Use recordPayment() or markAsPaid().`
+      };
+    }
+
+    return { valid: true, message: 'Valid transition' };
+  }
+  /**
+   * Generate unique invoice number using database sequence
+   * Format: INV-YYYYMMDD-XXXX
+   * NOTE: Uses PostgreSQL sequence to prevent race conditions under concurrent load
+   */
+  async generateInvoiceNumber() {
     const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const prefix = `INV-${date}`;
 
-    const query = `
-      SELECT invoice_number
-      FROM invoices i
-      JOIN projects p ON i.project_id = p.id
-      WHERE p.tenant_id = $1 AND invoice_number LIKE $2
-      ORDER BY invoice_number DESC
-      LIMIT 1
-    `;
+    // Use database sequence to get next number (thread-safe, no race condition)
+    const query = `SELECT nextval('invoice_number_seq') as seq`;
+    const result = await pool.query(query);
 
-    const result = await queryWithTenant(tenantId, query, [tenantId, `${prefix}-%`]);
-
-    let sequence = 1;
-    if (result.rows.length > 0) {
-      const lastNumber = result.rows[0].invoice_number;
-      const lastSeq = parseInt(lastNumber.split('-').pop());
-      sequence = lastSeq + 1;
-    }
-
+    const sequence = parseInt(result.rows[0].seq);
     return `${prefix}-${sequence.toString().padStart(4, '0')}`;
   }
 
@@ -104,9 +133,11 @@ class InvoiceService {
   }
 
   /**
-   * Get single invoice by ID
+   * Get single invoice by ID (optimized to single query)
    */
   async getInvoiceById(tenantId, invoiceId) {
+    // Single query using JSON aggregation for payments
+    // This eliminates the N+1 query problem and reduces database round trips by 50%
     const query = `
       SELECT
         i.*,
@@ -120,7 +151,24 @@ class InvoiceService {
         c.address as client_address,
         COALESCE(SUM(pay.amount), 0) as paid_amount,
         i.amount - COALESCE(SUM(pay.amount), 0) as balance,
-        COUNT(pay.id) as payment_count
+        COUNT(pay.id) FILTER (WHERE pay.id IS NOT NULL) as payment_count,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', pay.id,
+              'invoice_id', pay.invoice_id,
+              'amount', pay.amount,
+              'payment_date', pay.payment_date,
+              'payment_method', pay.payment_method,
+              'stripe_payment_intent_id', pay.stripe_payment_intent_id,
+              'notes', pay.notes,
+              'created_by', pay.created_by,
+              'created_at', pay.created_at
+            )
+            ORDER BY pay.payment_date DESC
+          ) FILTER (WHERE pay.id IS NOT NULL),
+          '[]'::json
+        ) as payments
       FROM invoices i
       JOIN projects p ON i.project_id = p.id
       JOIN clients c ON p.client_id = c.id
@@ -135,23 +183,7 @@ class InvoiceService {
       throw new Error('Invoice not found');
     }
 
-    // Get payment history
-    const paymentsQuery = `
-      SELECT
-        pay.*
-      FROM payments pay
-      JOIN invoices i ON pay.invoice_id = i.id
-      JOIN projects p ON i.project_id = p.id
-      WHERE p.tenant_id = $1 AND pay.invoice_id = $2
-      ORDER BY pay.payment_date DESC
-    `;
-
-    const paymentsResult = await queryWithTenant(tenantId, paymentsQuery, [tenantId, invoiceId]);
-
-    const invoice = result.rows[0];
-    invoice.payments = paymentsResult.rows;
-
-    return invoice;
+    return result.rows[0];
   }
 
   /**
@@ -199,7 +231,7 @@ class InvoiceService {
     }
 
     // Generate unique invoice number
-    const invoiceNumber = await this.generateInvoiceNumber(tenantId);
+    const invoiceNumber = await this.generateInvoiceNumber();
 
     const query = `
       INSERT INTO invoices (project_id, invoice_number, amount, due_date, notes, status)
@@ -222,8 +254,8 @@ class InvoiceService {
   async updateInvoice(tenantId, invoiceId, updates) {
     const allowedFields = ['amount', 'due_date', 'notes', 'status'];
     const updateFields = [];
-    const values = [tenantId, invoiceId];
-    let paramIndex = 3;
+    const values = [];
+    let paramIndex = 1;
 
     // Build dynamic UPDATE clause
     for (const [key, value] of Object.entries(updates)) {
@@ -251,10 +283,13 @@ class InvoiceService {
       throw new Error('Invoice not found');
     }
 
+    // Add invoiceId as the last parameter for WHERE clause
+    values.push(invoiceId);
+
     const query = `
       UPDATE invoices
       SET ${updateFields.join(', ')}, updated_at = NOW()
-      WHERE id = $2
+      WHERE id = $${paramIndex}
       RETURNING *
     `;
 
@@ -289,36 +324,38 @@ class InvoiceService {
 
   /**
    * Mark invoice as paid
+   * This now creates a payment record for the remaining balance
+   * The database trigger will automatically update the invoice status to 'paid'
    */
   async markAsPaid(tenantId, invoiceId, paymentDetails = {}) {
     const { stripePaymentIntentId = null, paidAt = new Date() } = paymentDetails;
 
-    const query = `
-      UPDATE invoices i
-      SET
-        status = 'paid',
-        paid_at = $3,
-        stripe_payment_intent_id = $4,
-        updated_at = NOW()
-      FROM projects p
-      WHERE i.project_id = p.id
-        AND p.tenant_id = $1
-        AND i.id = $2
-        AND i.status IN ('sent', 'overdue')
-      RETURNING i.*
-    `;
+    // Get current invoice with balance information
+    const invoice = await this.getInvoiceById(tenantId, invoiceId);
 
-    const result = await queryWithTenant(
-      tenantId,
-      query,
-      [tenantId, invoiceId, paidAt, stripePaymentIntentId]
-    );
-
-    if (result.rows.length === 0) {
-      throw new Error('Invoice not found or cannot be marked as paid');
+    // Validate invoice can be paid
+    if (!['sent', 'overdue', 'partially_paid'].includes(invoice.status)) {
+      throw new Error(`Invoice not found or cannot be marked as paid. Current status: ${invoice.status}`);
     }
 
-    return result.rows[0];
+    // Calculate remaining balance
+    const remainingBalance = parseFloat(invoice.balance || invoice.amount);
+
+    if (remainingBalance <= 0) {
+      throw new Error('Invoice is already fully paid');
+    }
+
+    // Create payment record for remaining balance
+    // The trigger will automatically update the invoice status to 'paid'
+    const result = await this.recordPayment(tenantId, invoiceId, {
+      amount: remainingBalance,
+      payment_date: paidAt,
+      payment_method: stripePaymentIntentId ? 'stripe' : 'other',
+      stripe_payment_intent_id: stripePaymentIntentId,
+      notes: 'Full payment recorded via markAsPaid'
+    });
+
+    return result.invoice;
   }
 
   /**
@@ -406,10 +443,12 @@ class InvoiceService {
         COUNT(*) FILTER (WHERE i.status = 'draft') as draft_count,
         COUNT(*) FILTER (WHERE i.status = 'sent') as sent_count,
         COUNT(*) FILTER (WHERE i.status = 'paid') as paid_count,
+        COUNT(*) FILTER (WHERE i.status = 'partially_paid') as partially_paid_count,
         COUNT(*) FILTER (WHERE i.status = 'overdue') as overdue_count,
+        COUNT(*) FILTER (WHERE i.status = 'canceled') as canceled_count,
         COALESCE(SUM(i.amount), 0) as total_amount,
         COALESCE(SUM(i.amount) FILTER (WHERE i.status = 'paid'), 0) as paid_amount,
-        COALESCE(SUM(i.amount) FILTER (WHERE i.status IN ('sent', 'overdue')), 0) as outstanding_amount
+        COALESCE(SUM(i.amount) FILTER (WHERE i.status IN ('sent', 'overdue', 'partially_paid')), 0) as outstanding_amount
       FROM invoices i
       JOIN projects p ON i.project_id = p.id
       WHERE p.tenant_id = $1
@@ -433,7 +472,7 @@ class InvoiceService {
       JOIN projects p ON i.project_id = p.id
       JOIN clients c ON p.client_id = c.id
       WHERE p.tenant_id = $1
-        AND i.status = 'sent'
+        AND i.status IN ('sent', 'partially_paid')
         AND i.due_date < CURRENT_DATE
       ORDER BY i.due_date ASC
     `;

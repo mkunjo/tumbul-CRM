@@ -1,530 +1,70 @@
-# Tumbul CRM
-
-A modern, multi-tenant CRM platform designed specifically for contractors and handymen to manage clients, projects, invoices, expenses, time tracking, and client communications.
-
-## Project Status
-
-**Backend:** ✅ 100% Complete
-**Frontend:** ✅ 100% Complete
-**Overall:** Production Ready
-
-- **87 API endpoints** fully implemented and tested
-- **127 tests passing** with 96-100% code coverage
-- **~8,000 lines** of production-ready code
-- **Full-stack application** with React frontend
-- **Multi-tenant architecture** with row-level security
-
-## Quick Start
-
-### Prerequisites
-- Node.js 14+
-- PostgreSQL 12+
-- AWS account (for S3 receipt uploads)
-
-### Installation
-
-```bash
-# 1. Clone and install
-git clone https://github.com/mkunjo/tumbul-CRM.git
-cd tumbul-CRM
-npm install
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your database and AWS credentials
-
-# 3. Setup database
-createdb crm_db
-npm run migrate:up
-
-# 4. Start backend (port 3000)
-npm run dev
-
-# 5. Start frontend (port 3001) - in separate terminal
-cd frontend
-npm install
-npm run dev
-```
-
-Access the application at:
-- Frontend: http://localhost:3001
-- Backend API: http://localhost:3000
-- Health Check: http://localhost:3000/health
-
-## Features
-
-### Client Management
-- Create, edit, and archive clients
-- Search and filter client lists
-- Track client contact information and notes
-- View client project history
-
-### Project Management
-- Project lifecycle tracking (active, completed, on hold, canceled)
-- Budget and timeline management
-- Client-project relationships
-- Activity timeline with all project events
-
-### Invoicing System
-- Auto-generated invoice numbers (INV-YYYYMMDD-XXXX)
-- Multiple line items per invoice with tax calculations
-- Partial payments support
-- Invoice status workflow (draft → sent → paid/overdue)
-- Payment tracking with methods and notes
-
-### Expense Tracking
-- Expense categorization (materials, labor, equipment, etc.)
-- Receipt upload to AWS S3
-- Client approval workflow
-- Category-based reporting
-- Project expense aggregation
-
-### Time Tracking
-- Live timer with real-time updates
-- Start/stop timer for any project
-- Manual time entry creation
-- Duration calculations and summaries
-- Project-based time aggregation
-
-### Analytics Dashboard
-- Revenue and expense metrics
-- Net profit calculations with margins
-- Interactive charts (revenue trends, top projects)
-- Recent activity feed across all modules
-- Time range filtering (7/30/90 days)
-
-### Client Portal
-- Read-only access for clients
-- View project details and photos
-- Track invoices and payments
-- Approve expenses
-- Activity timeline
-
-### Authentication & Security
-- JWT-based authentication with refresh tokens
-- OAuth 2.0 integration (Google, Apple)
-- Two-factor authentication (2FA)
-- Multi-tenant architecture with tenant isolation
-- Role-based access control
-- Subscription plan management (Free, Basic, Pro)
-
-## Technology Stack
-
-### Backend
-- **Runtime:** Node.js
-- **Framework:** Express.js 5.1
-- **Database:** PostgreSQL 12+ with Row-Level Security
-- **Authentication:** JWT, Passport.js (Google/Apple OAuth)
-- **File Storage:** AWS S3 with signed URLs
-- **Testing:** Jest, Supertest (127 tests, 96-100% coverage)
-- **Validation:** Express-validator, Joi
-
-### Frontend
-- **Framework:** React 19 with Vite
-- **HTTP Client:** Axios with interceptors
-- **Charts:** Recharts for data visualization
-- **Date Handling:** date-fns
-- **Routing:** React Router DOM
-- **Styling:** CSS with CSS variables
-
-### Infrastructure
-- Multi-tenant row-level security (RLS)
-- Database migration system
-- Rate limiting (100 req/15min)
-- CORS support
-- Graceful shutdown handling
-- Connection pooling (5-20 connections)
-
-## Project Structure
-
-```
-tumbul-CRM/
-├── backend/
-│   └── controllers/          # Legacy (minimal usage)
-├── config/
-│   ├── database.js          # PostgreSQL connection & multi-tenancy
-│   └── passport.js          # OAuth configuration
-├── middleware/
-│   └── auth.js              # JWT verification & authorization
-├── migrations/
-│   ├── 001-initial-schema.sql
-│   ├── 002-add-payments-table.sql
-│   └── 003-performance-improvements.sql
-├── routes/                   # 8 API modules (87 endpoints)
-│   ├── auth.js              # Authentication (13 endpoints)
-│   ├── clients.js           # Client management (9 endpoints)
-│   ├── projects.js          # Project management (9 endpoints)
-│   ├── invoices.js          # Invoicing (14 endpoints)
-│   ├── expenses.js          # Expense tracking (10 endpoints)
-│   ├── timeEntries.js       # Time tracking (13 endpoints)
-│   ├── dashboard.js         # Analytics (13 endpoints)
-│   └── portal.js            # Client portal (9 endpoints)
-├── services/                 # Business logic layer
-│   ├── authService.js
-│   ├── clientService.js
-│   ├── projectService.js
-│   ├── invoiceService.js
-│   ├── expenseService.js
-│   ├── timeEntryService.js
-│   ├── dashboardService.js
-│   └── portalService.js
-├── tests/                    # Unit tests (127 tests passing)
-├── scripts/                  # Utility and migration scripts
-├── frontend/
-│   └── src/
-│       ├── pages/           # React pages (Login, Dashboard, etc.)
-│       ├── components/      # Reusable components (Layout, etc.)
-│       ├── services/        # API client
-│       ├── context/         # React Context (Auth)
-│       └── assets/          # Styles and static files
-├── documentation/
-│   ├── ARCHITECTURE.md      # Technical architecture & API reference
-│   └── CHANGELOG.md         # Version history and changes
-├── server.js                # Express app entry point
-└── package.json             # Dependencies and scripts
-```
-
-## API Overview
-
-The API provides **87 RESTful endpoints** across 8 modules:
-
-| Module | Endpoints | Description |
-|--------|-----------|-------------|
-| **Authentication** | 13 | Register, login, OAuth (Google/Apple), 2FA |
-| **Clients** | 9 | Client CRUD, search, archive/restore, statistics |
-| **Projects** | 9 | Project CRUD, status management, timeline |
-| **Invoices** | 14 | Invoice management, line items, partial payments |
-| **Expenses** | 10 | Expense tracking, receipt uploads (S3), approval |
-| **Time Entries** | 13 | Timer functionality, manual entries, summaries |
-| **Dashboard** | 13 | Analytics, revenue trends, financial summaries |
-| **Client Portal** | 9 | Read-only client access, expense approval |
-
-See [ARCHITECTURE.md](documentation/ARCHITECTURE.md) for complete API documentation.
-
-## Database Schema
-
-**11 tables** with comprehensive relationships:
-
-Core Tables:
-- `tenants` - Multi-tenant account management
-- `subscriptions` - Plan tracking (free/basic/pro)
-- `usage_tracking` - Monthly usage statistics
-- `clients` - Client records with contact info
-- `projects` - Project data with status tracking
-- `oauth_accounts` - OAuth provider linking
-
-Feature Tables:
-- `photos` - Project photos with S3 storage
-- `invoices` - Invoice records
-- `invoice_line_items` - Line items with tax
-- `payments` - Payment tracking for invoices
-- `expenses` - Expense tracking with receipts
-- `time_entries` - Time logging with duration
-- `notification_queue` - SMS notification queue
-
-Database Features:
-- Row-Level Security (RLS) for tenant isolation
-- Automatic timestamp triggers
-- Calculated fields and aggregations
-- Comprehensive indexes
-- Database views for common queries
-
-## Environment Variables
-
-Create a `.env` file with the following (see `.env.example` for all options):
-
-```bash
-# Server
-PORT=3000
-NODE_ENV=development
-CORS_ORIGIN=http://localhost:3001
-
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=crm_db
-DB_USER=postgres
-DB_PASSWORD=your_password
-
-# Authentication
-JWT_SECRET=your_jwt_secret_min_32_characters
-JWT_REFRESH_SECRET=your_refresh_secret_min_32_characters
-JWT_EXPIRES_IN=24h
-JWT_REFRESH_EXPIRES_IN=7d
-
-# AWS S3 (for receipt uploads)
-AWS_ACCESS_KEY_ID=your_aws_access_key
-AWS_SECRET_ACCESS_KEY=your_aws_secret_key
-AWS_REGION=us-east-1
-S3_BUCKET_NAME=your_bucket_name
-
-# OAuth (Optional)
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_secret
-APPLE_CLIENT_ID=your_apple_client_id
-APPLE_TEAM_ID=your_apple_team_id
-APPLE_KEY_ID=your_apple_key_id
-
-# External Services (Optional)
-STRIPE_SECRET_KEY=your_stripe_key
-TWILIO_ACCOUNT_SID=your_twilio_sid
-TWILIO_AUTH_TOKEN=your_twilio_token
-```
-
-## Development
-
-### Running Tests
-
-```bash
-# Backend tests
-npm test                      # Run all tests
-npm run test:watch            # Watch mode
-npm test -- --coverage        # With coverage report
-
-# Results: 127 tests passing, 96-100% coverage
-```
-
-### Common Commands
-
-```bash
-# Database migrations
-npm run migrate:up           # Run pending migrations
-npm run migrate:down         # Rollback last migration
-npm run migrate:status       # Check migration status
-npm run migrate:reset        # Reset database (dev only)
-
-# Development
-npm run dev                  # Start backend (nodemon)
-cd frontend && npm run dev   # Start frontend (Vite)
-
-# Production
-NODE_ENV=production npm start  # Start production server
-cd frontend && npm run build   # Build frontend for production
-```
-
-### Adding a New Feature
-
-1. **Create service layer** (`services/featureService.js`):
-```javascript
-class FeatureService {
-  async getFeatures(tenantId, filters) {
-    const query = `SELECT * FROM features WHERE tenant_id = $1`;
-    return await queryWithTenant(tenantId, query, [tenantId]);
-  }
-  async createFeature(tenantId, data) { /* ... */ }
-}
-module.exports = new FeatureService();
-```
-
-2. **Create route handlers** (`routes/feature.js`):
-```javascript
-const router = express.Router();
-const { authenticate } = require('../middleware/auth');
-
-router.get('/', authenticate, async (req, res) => {
-  const result = await featureService.getFeatures(req.tenant.id, req.query);
-  res.json(result);
-});
-
-module.exports = router;
-```
-
-3. **Mount routes** in `server.js`:
-```javascript
-app.use('/api/feature', require('./routes/feature'));
-```
-
-4. **Add tests** (`tests/featureService.test.js`):
-```javascript
-describe('FeatureService', () => {
-  it('should get features', async () => {
-    const result = await featureService.getFeatures(tenantId, {});
-    expect(result).toBeDefined();
-  });
-});
-```
-
-## Subscription Plans
-
-| Feature | Free | Basic | Pro |
-|---------|------|-------|-----|
-| **Projects** | 3 | 25 | Unlimited |
-| **Clients** | 5 | 50 | Unlimited |
-| **Photos/month** | 50 | 500 | Unlimited |
-| **Invoices** | ✓ | ✓ | ✓ |
-| **Expenses** | ✓ | ✓ | ✓ |
-| **Time Tracking** | ✓ | ✓ | ✓ |
-| **Client Portal** | ✓ | ✓ | ✓ |
-| **API Access** | - | ✓ | ✓ |
-| **Priority Support** | - | - | ✓ |
-
-Plan limits are enforced via `checkUsageLimit()` middleware.
-
-## Security
-
-### Implemented Security Features
-- **Multi-tenancy:** Row-level security (RLS) at database level
-- **Authentication:** JWT tokens with 24h access, 7d refresh
-- **OAuth 2.0:** Google and Apple integration
-- **2FA:** Time-based one-time passwords (TOTP)
-- **Rate Limiting:** 100 req/15min general, 5 req/15min auth
-- **Input Validation:** Express-validator on all endpoints
-- **SQL Injection Prevention:** Parameterized queries
-- **Password Hashing:** bcrypt with 10 rounds
-- **CORS Protection:** Configurable origin whitelist
-- **Security Headers:** Helmet.js
-
-### Best Practices
-- All database queries use tenant-scoped functions
-- Session variable `app.current_tenant_id` set by middleware
-- Sensitive data never logged
-- Error messages sanitized in production
-- SSL/TLS required for production database connections
-
-## Documentation
-
-Comprehensive documentation available in `/documentation`:
-
-- **[ARCHITECTURE.md](documentation/ARCHITECTURE.md)** - Complete technical architecture, database schema, and API reference
-- **[CHANGELOG.md](documentation/CHANGELOG.md)** - Version history, migrations, and bug fixes
-
-## Testing
-
-All backend modules have comprehensive unit tests:
-
-```
-Test Suites: 5 passed, 5 total
-Tests:       127 passed, 127 total
-Coverage:    96-100% across all services
-```
-
-**Test Files:**
-- `invoiceService.test.js` - 27 tests (invoice management, payments)
-- `expenseService.test.js` - 29 tests (expenses, S3 uploads, approval)
-- `timeEntryService.test.js` - 34 tests (timer, manual entries)
-- `dashboardService.test.js` - 15 tests (analytics, metrics)
-- `portalService.test.js` - 26 tests (client portal access)
-
-## Performance
-
-### Optimizations Implemented
-- Database connection pooling (5-20 connections)
-- Query optimization with proper indexes
-- Invoice number sequence (eliminates race conditions)
-- Efficient aggregation queries
-- S3 signed URLs (30min expiration)
-- Pagination on all list endpoints (default 50, max 100)
-
-### Recent Performance Improvements
-- Migration 003: Added database indexes on frequently queried columns
-- Fixed invoice number generation race condition (sequence-based)
-- Optimized `getInvoiceById` query (50% reduction in query time)
-- Added composite indexes for multi-column filters
-
-## Troubleshooting
-
-### Database Connection Issues
-```bash
-# Check PostgreSQL is running
-pg_isready
-
-# Verify database exists
-psql -l | grep crm_db
-
-# Check migrations
-npm run migrate:status
-```
-
-### JWT Token Issues
-- Verify `JWT_SECRET` is at least 32 characters
-- Check token hasn't expired (default 24h)
-- Ensure header format: `Authorization: Bearer <token>`
-- Debug tokens at https://jwt.io
-
-### Frontend Connection Issues
-- Verify backend is running on port 3000
-- Check `CORS_ORIGIN` in backend `.env` matches frontend URL
-- Ensure frontend API client base URL is correct
-- Check browser console for CORS errors
-
-### S3 Upload Issues
-- Verify AWS credentials in `.env`
-- Check S3 bucket exists and has correct permissions
-- Ensure IAM user has `s3:PutObject` and `s3:GetObject` permissions
-- Check bucket CORS configuration allows your origin
-
-## Deployment
-
-### Production Checklist
-- [ ] Set `NODE_ENV=production`
-- [ ] Use strong JWT secrets (32+ characters)
-- [ ] Enable SSL/TLS for database connections
-- [ ] Configure production database with connection pooling
-- [ ] Set up monitoring (Sentry for error tracking)
-- [ ] Configure automated database backups
-- [ ] Set up CI/CD pipeline
-- [ ] Configure rate limiting per plan
-- [ ] Enable audit logging
-- [ ] Set up log aggregation (CloudWatch, LogDNA, etc.)
-
-### Environment-Specific Configuration
-```bash
-# Production
-NODE_ENV=production
-DB_SSL=true
-LOG_LEVEL=error
-SENTRY_DSN=your_sentry_dsn
-
-# Staging
-NODE_ENV=staging
-DB_SSL=true
-LOG_LEVEL=info
-
-# Development
-NODE_ENV=development
-DB_SSL=false
-LOG_LEVEL=debug
-```
-
-## Contributing
-
-Contributions are welcome! Please follow these guidelines:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Write tests for new features
-4. Ensure all tests pass (`npm test`)
-5. Follow existing code patterns and conventions
-6. Update documentation as needed
-7. Submit a pull request with detailed description
-
-## License
-
-MIT License - See LICENSE file for details
-
-## Support
-
-For questions, issues, or feature requests:
-- Check the [documentation](documentation/)
-- Review [existing issues](https://github.com/mkunjo/tumbul-CRM/issues)
-- Create a new issue with detailed description
-
-## Authors
-
-- **Development Team** - Initial backend and frontend implementation
-- **Contributors** - See GitHub contributors list
-
-## Acknowledgments
-
-- Express.js and Node.js communities
-- PostgreSQL documentation and community
-- React and Vite teams
-- Jest testing framework
-- All open-source contributors
+# Tumbul CRM  
+A modern, multi-tenant CRM built for contractors and handymen — manage clients, projects, invoices, expenses, time tracking, and client communications in one platform.  
 
 ---
 
-**Version:** 1.0.0
-**Status:** Production Ready
-**Backend:** ✅ 100% Complete | **Frontend:** ✅ 100% Complete
-**Last Updated:** November 2025
+## 📌 Features  
+- **Client & project management**  
+- **Invoices, payments, and expenses** (with receipt uploads to S3)  
+- **Time tracking with live timers**  
+- **Analytics dashboard** with revenue/expense insights  
+- **Client portal** (read-only)  
+- **Multi-tenant security** with row-level isolation  
+- **OAuth login** (Google/Apple) & optional **2FA**  
+
+---
+
+## 🧱 Technology Stack  
+**Backend:**  
+- Node.js, Express, PostgreSQL (with RLS)  
+- Passport.js for authentication  
+- AWS S3 for file storage  
+
+**Frontend:**  
+- React, Vite, Axios  
+- Recharts for data visualization  
+
+**Testing:**  
+- Jest + Supertest  
+
+**Architecture:**  
+- Multi-tenant, modular services  
+- Built-in migration system  
+
+---
+
+## 🚀 Quick Start  
+
+### 📌 Requirements  
+- Node.js 14+  
+- PostgreSQL 12+  
+- AWS account (for S3 uploads)  
+
+---
+
+### 🛠️ Installation  
+
+```bash
+git clone https://github.com/mkunjo/tumbul-CRM.git
+cd tumbul-CRM
+npm install
+cp .env.example .env   # Fill in your environment variables
+
+🗄️ Database Setup
+createdb crm_db
+npm run migrate:up
+
+🧪 Run the App
+npm run dev          # Backend (port 3000)
+cd frontend
+npm install
+npm run dev          # Frontend (port 3003)
+
+📁 Project Structure
+backend/
+  routes/
+  services/
+  migrations/
+  middleware/
+frontend/
+  src/

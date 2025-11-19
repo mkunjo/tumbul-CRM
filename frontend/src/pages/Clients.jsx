@@ -6,6 +6,7 @@ import { useClients } from '../hooks/useClients';
 import DataTable from '../components/DataTable';
 import ErrorBoundary from '../components/ErrorBoundary';
 import FocusLock from 'react-focus-lock';
+import { sanitizeFormData, validateEmail, validatePhone } from '../utils/sanitize';
 import './Clients.css';
 
 const Clients = () => {
@@ -29,11 +30,38 @@ const Clients = () => {
     e.preventDefault();
     setError('');
 
+    // Validate email if provided
+    if (formData.email) {
+      const emailValidation = validateEmail(formData.email);
+      if (!emailValidation.isValid) {
+        setError(emailValidation.error);
+        return;
+      }
+    }
+
+    // Validate phone if provided
+    if (formData.phone) {
+      const phoneValidation = validatePhone(formData.phone);
+      if (!phoneValidation.isValid) {
+        setError(phoneValidation.error);
+        return;
+      }
+    }
+
+    // Sanitize form data before sending
+    const sanitizedData = sanitizeFormData(formData, {
+      name: 'string',
+      email: 'email',
+      phone: 'phone',
+      address: 'string',
+      notes: 'string',
+    });
+
     try {
       if (editingClient) {
-        await clientsAPI.update(editingClient.id, formData);
+        await clientsAPI.update(editingClient.id, sanitizedData);
       } else {
-        await clientsAPI.create(formData);
+        await clientsAPI.create(sanitizedData);
       }
       setShowModal(false);
       resetForm();

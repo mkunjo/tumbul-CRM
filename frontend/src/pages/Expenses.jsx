@@ -7,6 +7,7 @@ import { useProjects } from '../hooks/useProjects';
 import DataTable from '../components/DataTable';
 import ErrorBoundary from '../components/ErrorBoundary';
 import FocusLock from 'react-focus-lock';
+import { sanitizeFormData, validateAmount } from '../utils/sanitize';
 import './Expenses.css';
 
 const Expenses = () => {
@@ -39,15 +40,33 @@ const Expenses = () => {
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
+
+    // Validate amount
+    const amountValidation = validateAmount(formData.amount);
+    if (!amountValidation.isValid) {
+      toast.error(amountValidation.error);
+      return;
+    }
+
+    // Sanitize form data before sending
+    const sanitizedData = sanitizeFormData(formData, {
+      projectId: 'string',
+      category: 'string',
+      amount: 'number',
+      date: 'date',
+      description: 'string',
+      notes: 'string',
+    });
+
     try {
       let expenseId;
 
       if (editingExpense) {
-        await expensesAPI.update(editingExpense.id, formData);
+        await expensesAPI.update(editingExpense.id, sanitizedData);
         expenseId = editingExpense.id;
         toast.success('Expense updated successfully');
       } else {
-        const response = await expensesAPI.create(formData);
+        const response = await expensesAPI.create(sanitizedData);
         // Fixed: Backend returns flat response, not nested
         expenseId = response.data.id;
         toast.success('Expense created successfully');

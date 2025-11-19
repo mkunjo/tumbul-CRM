@@ -7,6 +7,7 @@ import { useProjects } from '../hooks/useProjects';
 import DataTable from '../components/DataTable';
 import ErrorBoundary from '../components/ErrorBoundary';
 import FocusLock from 'react-focus-lock';
+import { sanitizeFormData, validateAmount } from '../utils/sanitize';
 import './Invoices.css';
 
 const Invoices = () => {
@@ -39,12 +40,30 @@ const Invoices = () => {
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
+
+    // Validate amount
+    if (formData.amount) {
+      const amountValidation = validateAmount(formData.amount);
+      if (!amountValidation.isValid) {
+        toast.error(amountValidation.error);
+        return;
+      }
+    }
+
+    // Sanitize form data before sending
+    const sanitizedData = sanitizeFormData(formData, {
+      projectId: 'string',
+      amount: 'number',
+      dueDate: 'date',
+      notes: 'string',
+    });
+
     try {
       if (editingInvoice) {
-        await invoicesAPI.update(editingInvoice.id, formData);
+        await invoicesAPI.update(editingInvoice.id, sanitizedData);
         toast.success('Invoice updated successfully');
       } else {
-        await invoicesAPI.create(formData);
+        await invoicesAPI.create(sanitizedData);
         toast.success('Invoice created successfully');
       }
       setShowModal(false);
@@ -58,8 +77,24 @@ const Invoices = () => {
 
   const handlePaymentSubmit = useCallback(async (e) => {
     e.preventDefault();
+
+    // Validate payment amount
+    const amountValidation = validateAmount(paymentData.amount);
+    if (!amountValidation.isValid) {
+      toast.error(amountValidation.error);
+      return;
+    }
+
+    // Sanitize payment data before sending
+    const sanitizedPaymentData = sanitizeFormData(paymentData, {
+      amount: 'number',
+      payment_date: 'date',
+      payment_method: 'string',
+      notes: 'string',
+    });
+
     try {
-      await invoicesAPI.recordPayment(selectedInvoice.id, paymentData);
+      await invoicesAPI.recordPayment(selectedInvoice.id, sanitizedPaymentData);
       setShowPaymentModal(false);
       setSelectedInvoice(null);
       resetPaymentForm();

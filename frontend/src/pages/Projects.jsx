@@ -7,6 +7,7 @@ import { useClients } from '../hooks/useClients';
 import DataTable from '../components/DataTable';
 import ErrorBoundary from '../components/ErrorBoundary';
 import FocusLock from 'react-focus-lock';
+import { sanitizeFormData, validateAmount } from '../utils/sanitize';
 import '../pages/Clients.css';
 
 const Projects = () => {
@@ -31,12 +32,33 @@ const Projects = () => {
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
+
+    // Validate amount if provided
+    if (formData.totalAmount) {
+      const amountValidation = validateAmount(formData.totalAmount);
+      if (!amountValidation.isValid) {
+        toast.error(amountValidation.error);
+        return;
+      }
+    }
+
+    // Sanitize form data before sending
+    const sanitizedData = sanitizeFormData(formData, {
+      clientId: 'string',
+      title: 'string',
+      description: 'string',
+      status: 'string',
+      totalAmount: 'number',
+      startDate: 'date',
+      estimatedCompletion: 'date',
+    });
+
     try {
       if (editingProject) {
-        await projectsAPI.update(editingProject.id, formData);
+        await projectsAPI.update(editingProject.id, sanitizedData);
         toast.success('Project updated successfully');
       } else {
-        await projectsAPI.create(formData);
+        await projectsAPI.create(sanitizedData);
         toast.success('Project created successfully');
       }
       setShowModal(false);

@@ -8,6 +8,7 @@ import { useProjects } from '../hooks/useProjects';
 import DataTable from '../components/DataTable';
 import ErrorBoundary from '../components/ErrorBoundary';
 import FocusLock from 'react-focus-lock';
+import { sanitizeFormData, sanitizeString } from '../utils/sanitize';
 import './TimeEntries.css';
 
 const TimeEntries = () => {
@@ -85,7 +86,7 @@ const TimeEntries = () => {
     try {
       const response = await timeEntriesAPI.start({
         projectId: projectId,
-        description: description,
+        description: sanitizeString(description),
       });
       mutateRunningTimer(response.data.timeEntry);
       mutateTimeEntries();
@@ -113,12 +114,21 @@ const TimeEntries = () => {
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
+
+    // Sanitize form data before sending
+    const sanitizedData = sanitizeFormData(formData, {
+      projectId: 'string',
+      description: 'string',
+      startTime: 'date',
+      endTime: 'date',
+    });
+
     try {
       if (editingEntry) {
-        await timeEntriesAPI.update(editingEntry.id, formData);
+        await timeEntriesAPI.update(editingEntry.id, sanitizedData);
         toast.success('Time entry updated successfully');
       } else {
-        await timeEntriesAPI.create(formData);
+        await timeEntriesAPI.create(sanitizedData);
         toast.success('Time entry created successfully');
       }
       setShowModal(false);
